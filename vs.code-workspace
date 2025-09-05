@@ -19,7 +19,8 @@
                 // "program": "${file}",
                 "program": "main.py",
                 "console": "integratedTerminal",
-                // "args": ["--address", "127.0.0.1", "--port", "5000"]
+                // "args": ["C:\\tmp"]
+                // "args": ["C:\\tmp", "start_script"]
             }
         ]
     }

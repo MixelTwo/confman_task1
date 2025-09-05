@@ -210,10 +210,20 @@ def command(name: str | None = None):
 def cmd():
     global history_i, history_enabled
     print("Hello world!")
+    vfs = ""
+    start_script = ""
+    args = sys.argv[1:]
+    if len(args) >= 1:
+        vfs = args[0]
+    if len(args) >= 2:
+        start_script = args[1]
+    if start_script:
+        _load_start_script(start_script)
+
     while True:
         history_i = len(history)
         history_enabled = True
-        line = input("> ").strip()
+        line = input(vfs + "> ").strip()
         history_enabled = False
         if line == "":
             continue
@@ -248,3 +258,14 @@ def cmd():
             else:
                 print(f'Unknown command: "{cname}"')
     window.destroy()
+
+
+def _load_start_script(path: str):
+    global input_buffer
+    try:
+        with open(path, "r", encoding="utf8") as f:
+            with lock:
+                input_buffer = f.read() + "\n"
+                update_console_text()
+    except Exception:
+        print(f'Cant open script file: "{path}"')

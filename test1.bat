@@ -1,0 +1,1 @@
+dist\emulator.exe C:\tmp start_script
