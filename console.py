@@ -8,6 +8,8 @@ from typing import Callable
 
 import pyperclip
 
+from vfs import Vfs
+
 stdinput = input
 stdprint = print
 
@@ -71,6 +73,7 @@ def on_text_change(e):
         with lock:
             new_text = text.get("1.0", tk.END)[:-1]
             changed_text = new_text[:len(console_text)]
+            to_end = False
             if console_text == changed_text:
                 input_buffer = new_text[len(console_text):]
             else:
@@ -83,21 +86,33 @@ def on_text_change(e):
                 while oldl - ei > 0 and newl - ei > 0 and old_text[oldl - ei] == new_text[newl - ei]:
                     ei += 1
                 input_buffer = new_text[si:newl - ei + 1]
+                to_end = True
             if "\n" in input_buffer:
                 event.set()
             update_console_text()
+            if to_end:
+                text.mark_set("insert", "end")
             text.edit_modified(False)
 
 
 def update_console_text():
+    pos = text.index(tk.INSERT)
     text.delete("1.0", tk.END)
     text.insert("1.0", console_text + input_buffer)
     text.see(tk.END)
+    text.mark_set("insert", pos)
 
 
 def on_key_release(event):
-    global history_i, input_buffer
-    if event.keysym in ("Up", "Down"):
+    global history_i, input_buffer, autocomplete_moveto, ctrl_backspace_moveto
+    if event.keysym == "Return":
+        with lock:
+            input_buffer += "\n"
+            update_console_text()
+    elif event.keysym in ("Up", "Down"):
+        pos = get_cursor_char_position() - len(console_text)
+        if pos < 0:
+            return
         if not history_enabled:
             text.mark_set("insert", "end")
             return
@@ -111,6 +126,11 @@ def on_key_release(event):
                 input_buffer = history[history_i]
                 update_console_text()
         text.mark_set("insert", "end")
+    elif event.state & 0x4 and event.keysym == "Left":
+        pos = get_cursor_char_position() - len(console_text)
+        if pos < 0:
+            if "\n" not in console_text[pos:]:
+                text.mark_set("insert", f"1.0+{len(console_text)} chars")
     elif event.keysym == "Escape":
         with lock:
             history_i = len(history)
@@ -119,6 +139,124 @@ def on_key_release(event):
         text.mark_set("insert", "end")
     elif event.state & 0x4 and event.keysym == "w":
         window.destroy()
+    elif event.keysym == "Tab":
+        if autocomplete_moveto >= 0:
+            text.mark_set("insert", f"1.0+{len(console_text) + autocomplete_moveto} chars")
+            autocomplete_moveto = -1
+    elif event.state & 0x4 and event.keysym == "BackSpace":
+        if ctrl_backspace_moveto >= 0:
+            text.mark_set("insert", f"1.0+{len(console_text) + ctrl_backspace_moveto} chars")
+            ctrl_backspace_moveto = -1
+    elif event.keysym == "Home":
+        pos = get_cursor_char_position() - len(console_text)
+        if pos >= 0:
+            text.mark_set("insert", f"1.0+{len(console_text)} chars")
+
+
+def on_key_press(event):
+    global autocomplete, autocomplete_start, autocomplete_i, input_buffer, autocomplete_moveto
+    if event.keysym != "Tab":
+        autocomplete = None
+    if event.keysym == "Return":
+        return "break"
+    if event.keysym in ("Up", "Down", "Home"):
+        pos = get_cursor_char_position() - len(console_text)
+        if pos >= 0:
+            return "break"
+        return
+    if event.keysym in ("Left", "BackSpace"):
+        pos = get_cursor_char_position() - len(console_text)
+        if pos == 0:
+            return "break"
+        return
+    if not autocomplete_enabled:
+        return
+    if event.keysym != "Tab":
+        return
+    if autocomplete is None:
+        cpos = get_cursor_char_position() - len(console_text)
+        if cpos < 0:
+            return "break"
+        autocomplete = ""
+        cpos -= 1
+        while cpos >= 0 and cpos < len(input_buffer) and input_buffer[cpos] != " ":
+            autocomplete += input_buffer[cpos]
+            cpos -= 1
+        autocomplete_i = -1
+        autocomplete_start = cpos + 1
+        autocomplete = autocomplete[::-1]
+    autocomplete = autocomplete.replace("\\", "/")
+    startswith = autocomplete
+    prefix = ""
+    item = vfs.cwd
+    if "/" in autocomplete:
+        *path, startswith = autocomplete.split("/")
+        prefix = os.path.sep.join(path) + os.path.sep
+        item = item.follow_path(path)
+        if not item:
+            return "break"
+    items = sorted(it for it in item.children.keys() if it.startswith(startswith))
+    if len(items) == 0:
+        return "break"
+    autocomplete_i = (autocomplete_i + 1) % len(items)
+    item = prefix + items[autocomplete_i]
+    with lock:
+        start = autocomplete_start
+        end = start
+        while end < len(input_buffer) and input_buffer[end] != " ":
+            end += 1
+        input_buffer = input_buffer[:start] + item + input_buffer[end:]
+        autocomplete_moveto = start + len(item)
+        update_console_text()
+    return "break"
+
+
+def get_cursor_char_position():
+    insert_index = text.index(tk.INSERT)
+    char_position = text.count("1.0", insert_index, "chars")
+    if char_position:
+        return char_position[0]
+    return 0
+
+
+ctrl_backspace_moveto = -1
+ctrl_backspace_chars = (" ", "_", "/", "\\")
+
+
+def ctrl_backspace(event):
+    global input_buffer, ctrl_backspace_moveto
+    pos = get_cursor_char_position() - len(console_text)
+    if pos < 0:
+        return "break"
+    start = pos - 1
+    sp = start >= 0 and start < len(input_buffer) and input_buffer[start] in ctrl_backspace_chars
+    spch = input_buffer[start] if sp else ""
+    while start >= 0 and start < len(input_buffer) and (
+            (sp and input_buffer[start] == spch) or (not sp and input_buffer[start] not in ctrl_backspace_chars)):
+        start -= 1
+    start += 1
+    with lock:
+        input_buffer = input_buffer[:start] + input_buffer[pos:]
+        update_console_text()
+        ctrl_backspace_moveto = start
+    return "break"
+
+
+def ctrl_delete(event):
+    global input_buffer, ctrl_backspace_moveto
+    pos = get_cursor_char_position() - len(console_text)
+    if pos < 0:
+        return "break"
+    end = pos
+    sp = end < len(input_buffer) and input_buffer[end] in ctrl_backspace_chars
+    spch = input_buffer[end] if sp else ""
+    while end < len(input_buffer) and (
+            (sp and input_buffer[end] == spch) or (not sp and input_buffer[end] not in ctrl_backspace_chars)):
+        end += 1
+    with lock:
+        input_buffer = input_buffer[:pos] + input_buffer[end:]
+        update_console_text()
+    return "break"
 
 
 def on_right_click(e):
@@ -142,6 +280,9 @@ text = tk.Text(window,
                )
 text.bind("<<Modified>>", on_text_change)
 text.bind("<KeyRelease>", on_key_release)
+text.bind('<KeyPress>', on_key_press)
+text.bind("<Control-BackSpace>", ctrl_backspace)
+text.bind("<Control-Delete>", ctrl_delete)
 text.bind("<Button-3>", on_right_click)
 text.pack(expand=True, fill="both")
 
@@ -150,6 +291,7 @@ def input(prompt: str = "") -> str:
     global console_text, input_buffer
     print(prompt, end="")
     if "\n" not in input_buffer:
+        text.mark_set("insert", "end")
         event.clear()
         event.wait()
     with lock:
@@ -187,48 +329,79 @@ def run():
     t = threading.Thread(target=cmd)
     t.daemon = True
     t.start()
+    text.focus_set()
     window.mainloop()
     sys.exit()
 
 
 commands = {}
+commands_help = {}
+commands_aliases = {}
 history = []
 history_i = 0
 history_enabled = False
+autocomplete: str | None = None
+autocomplete_enabled = False
+autocomplete_i = -1
+autocomplete_start = 0
+autocomplete_moveto = -1
+
+vfs = Vfs()
 
 
-def command(name: str | None = None):
+def command(name: str | None = None, *, alias: str | tuple[str] | None = None, doc: str | None = None):
+    aliases: list[str] = []
+    if alias:
+        if isinstance(alias, str):
+            aliases = [alias]
+        else:
+            aliases = list(alias)
+
     def decorator(fn: Callable[[list[str]], None]):
-        cname = name if name is not None else fn.__name__
-        if cname in commands:
-            raise Exception(f'Command with name "{cname}" already registered')
-        commands[cname] = fn
+        aliases.append(name if name is not None else fn.__name__)
+        help = doc if doc is not None else fn.__doc__
+        if help:
+            help = remove_doc_indent(help)
+        for cname in aliases:
+            if cname in commands:
+                raise Exception(f'Command with name "{cname}" already registered')
+            commands[cname] = fn
+            commands_help[cname] = help
+            commands_aliases[cname] = aliases
         return fn
     return decorator
 
 
 def cmd():
-    global history_i, history_enabled
-    print("Hello world!")
-    vfs = ""
+    global history_i, history_enabled, autocomplete_enabled
     start_script = ""
     args = sys.argv[1:]
+    err = False
     if len(args) >= 1:
-        vfs = args[0]
+        if not vfs.init(args[0]):
+            err = True
+            print(f'Cant open folder: "{args[0]}"')
     if len(args) >= 2:
         start_script = args[1]
-    if start_script:
-        _load_start_script(start_script)
+    if not err and start_script:
+        err = not _load_start_script(start_script)
+
+    if err:
+        print("Press Enter to exit")
+    else:
+        print("Hello world!")
 
     while True:
         history_i = len(history)
         history_enabled = True
-        line = input(vfs + "> ").strip()
+        autocomplete_enabled = True
+        line = input(vfs.getcwd() + "> ").strip()
         history_enabled = False
+        autocomplete_enabled = False
+        if err or line == "exit":
+            break
         if line == "":
             continue
-        if line == "exit":
-            break
         if line in history:
             history.remove(line)
         history.append(line)
@@ -251,12 +424,22 @@ def cmd():
         args.append(arg)
         if quote:
             print("err: quote not closed")
-        else:
-            cname = args[0]
-            if cname in commands:
-                commands[cname](args[1:])
+            continue
+        cname, *args = args
+        if cname not in commands:
+            print(f'Unknown command: "{cname}"')
+            continue
+        if len(args) == 1 and args[0] in ("/?", "/h", "-h", "--help"):
+            help = commands_help.get(cname, None)
+            aliases = commands_aliases.get(cname, [cname])
+            if help:
+                if len(aliases) > 1:
+                    help = "Aliases: " + ", ".join(aliases) + "\n" + help
+                print(help + "\n")
             else:
-                print(f'Unknown command: "{cname}"')
+                print("No help for this command")
+            continue
+        commands[cname](args)
     window.destroy()
 
 
@@ -269,3 +452,20 @@ def _load_start_script(path: str):
                 update_console_text()
     except Exception:
         print(f'Cant open script file: "{path}"')
+        return False
+    return True
+
+
+def remove_doc_indent(doc: str):
+    lines = doc.strip("\n").replace("\t", "    ").split("\n")
+    min_indent = 9999
+    for line in lines:
+        if line.strip() == "":
+            continue
+        i = 0
+        while i < len(line) and line[i] == " ":
+            i += 1
+        min_indent = min(min_indent, i)
+    if lines[-1].strip() == "":
+        lines.pop()
+    return "\n".join(line[min_indent:] for line in lines)

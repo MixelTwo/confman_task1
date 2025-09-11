@@ -1,0 +1,19 @@
+dir
+
+cd planets
+dir
+
+cd ..\stars
+cd qwerty
+dir
+
+cd nova_station
+dir
+dir qqq
+
+ls ../../planets/mars_base
+cd ../../planets/mars_base
+ls
+
+ls -h
+cd /?

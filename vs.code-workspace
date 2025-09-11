@@ -19,7 +19,7 @@
                 // "program": "${file}",
                 "program": "main.py",
                 "console": "integratedTerminal",
-                // "args": ["C:\\tmp"]
+                "args": ["C:/tmp"]
                 // "args": ["C:\\tmp", "start_script"]
             }
         ]
