@@ -15,5 +15,10 @@ ls ../../planets/mars_base
 cd ../../planets/mars_base
 ls
 
+cd /stars/nova_station/main_block
+ls
+cd /
+cd ..
+
 ls -h
 cd /?

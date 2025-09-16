@@ -1,23 +1,30 @@
 import os
 
+VMODE = True
+
 
 class Vfs:
     volumes: dict[str, "VfsItem"]
     cwd: "VfsItem"
 
     def __init__(self) -> None:
-        self.cwd = VfsItem(self, "~", None)
-        self.volumes = {"~": self.cwd}
+        self.cwd = VfsItem(self, "/", None)
+        self.volumes = {"/": self.cwd}
 
     def init(self, path: str):
         path = os.path.abspath(path)
         if not os.path.exists(path) or os.path.isfile(path):
             return False
-        disc, *parts = path.replace("\\", "/").split("/")
-        item = VfsItem(self, disc, None)
-        cur = item.follow_path(parts)
-        if not cur:
-            return False
+        if VMODE:
+            disc = path
+            item = VfsItem(self, disc, None)
+            cur = item
+        else:
+            disc, *parts = path.replace("\\", "/").split("/")
+            item = VfsItem(self, disc, None)
+            cur = item.follow_path(parts)
+            if not cur:
+                return False
         self.cwd = cur
         self.volumes = {disc: item}
         return True
@@ -51,7 +58,7 @@ class VfsItem:
         self.__children__ = {}
         if self.is_file:
             return self.__children__
-        path = self.path()
+        path = self.real_path()
         if os.path.exists(path):
             for name in os.listdir(path):
                 is_file = os.path.isfile(os.path.join(path, name))
@@ -60,12 +67,33 @@ class VfsItem:
         return self.__children__
 
     def follow_path(self, path: str | list[str]) -> "VfsItem | None":
-        parts = [p.strip() for p in path.replace("\\", "/").split("/")] \
-            if isinstance(path, str) else path
-        if len(parts) > 0 and ":" in parts[0]:
-            disc, *parts = parts
-            if disc in self.vfs.volumes:
-                return self.vfs.volumes[disc].__follow_path__(parts)
+        if isinstance(path, str):
+            path = path.replace("\\", "/").strip()
+            parts = [p.strip() for p in path.split("/")]
+            if path == "/":
+                parts = ["/"]
+            elif path.startswith("/"):
+                parts[0] = "/"
+        else:
+            parts = path
+        if len(parts) > 0 and (":" in parts[0] or parts[0] == "/"):
+            disc, *parts = parts  # add new disc if exist
+            if disc == "/":
+                root = self
+                while root.parent:
+                    root = root.parent
+                return root.__follow_path__(parts)
+
+            if disc not in self.vfs.volumes:
+                if VMODE:
+                    return None
+                p = os.path.abspath(disc)
+                if not os.path.exists(p):
+                    return None
+                item = VfsItem(self.vfs, disc, None)
+                self.vfs.volumes[disc] = item
+
+            return self.vfs.volumes[disc].__follow_path__(parts)
         return self.__follow_path__(parts)
 
     def __follow_path__(self, path: list[str]) -> "VfsItem | None":
@@ -82,7 +110,7 @@ class VfsItem:
             return None
         return self.children[p].__follow_path__(rest)
 
-    def path(self):
+    def real_path(self):
         if not self.parent:
             return self.name + os.path.sep
         cur = self
@@ -91,3 +119,20 @@ class VfsItem:
             cur = cur.parent
             path.append(cur.name)
         return os.path.sep.join(reversed(path))
+
+    def path(self):
+        if not self.parent:
+            if VMODE:
+                return "/"
+            return self.name + os.path.sep
+        cur = self
+        path = [cur.name]
+        while cur.parent:
+            cur = cur.parent
+            path.append(cur.name)
+        if VMODE:
+            path[-1] = ""
+        r = os.path.sep.join(reversed(path))
+        if VMODE:
+            r = r.replace("\\", "/")
+        return r

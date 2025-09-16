@@ -32,7 +32,7 @@ def ls(args: list[str]):
 @command()
 def cd(args: list[str]):
     """
-    cd <directory>
+    Usage: cd <directory>
     Change the working directory
     """
     if len(args) == 0:

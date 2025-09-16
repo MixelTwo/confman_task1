@@ -8,7 +8,7 @@ from typing import Callable
 
 import pyperclip
 
-from vfs import Vfs
+from vfs import Vfs, VMODE
 
 stdinput = input
 stdprint = print
@@ -48,7 +48,7 @@ window = tk.Tk()
 window.title(f"Emulator - {username}@{hostname}")
 window.iconbitmap(os.path.join(folder, "favicon.ico"))
 window.config(bg="#0c0c0c")
-w, h = 600, 400
+w, h = 900, 500
 x = (window.winfo_screenwidth() - w) // 2
 y = (window.winfo_screenheight() - h) // 2
 window.geometry(f"{w}x{h}+{x}+{y}")
@@ -97,8 +97,7 @@ def on_text_change(e):
 
 def update_console_text():
     pos = text.index(tk.INSERT)
-    text.delete("1.0", tk.END)
-    text.insert("1.0", console_text + input_buffer)
+    text.replace("1.0", tk.END, console_text + input_buffer)
     text.see(tk.END)
     text.mark_set("insert", pos)
 
@@ -173,40 +172,67 @@ def on_key_press(event):
         return
     if event.keysym != "Tab":
         return
+    cpos = get_cursor_char_position() - len(console_text)
+    if cpos < 0:
+        return "break"
     if autocomplete is None:
-        cpos = get_cursor_char_position() - len(console_text)
-        if cpos < 0:
-            return "break"
         autocomplete = ""
-        cpos -= 1
-        while cpos >= 0 and cpos < len(input_buffer) and input_buffer[cpos] != " ":
-            autocomplete += input_buffer[cpos]
-            cpos -= 1
+        quote = False
+        quoteI = 0
+        for i in range(min(cpos - 1, len(input_buffer))):
+            if input_buffer[i] == '"':
+                quoteI = i
+                quote = not quote
+        if quote:
+            autocomplete = input_buffer[quoteI:cpos]
+            autocomplete_start = quoteI
+        else:
+            i = cpos - 1
+            while i >= 0 and i < len(input_buffer) and input_buffer[i] != " ":
+                autocomplete += input_buffer[i]
+                i -= 1
+            autocomplete_start = i + 1
+            autocomplete = autocomplete[::-1]
         autocomplete_i = -1
-        autocomplete_start = cpos + 1
-        autocomplete = autocomplete[::-1]
-    autocomplete = autocomplete.replace("\\", "/")
-    startswith = autocomplete
+        autocomplete = autocomplete.replace("\\", "/")
+    startswith = autocomplete.strip('"')
     prefix = ""
     item = vfs.cwd
     if "/" in autocomplete:
-        *path, startswith = autocomplete.split("/")
-        prefix = os.path.sep.join(path) + os.path.sep
-        item = item.follow_path(path)
+        sw = startswith
+        *path, startswith = startswith.split("/")
+        sep = "/" if VMODE else os.path.sep
+        prefix = sep.join(path) + sep
+        if sw.startswith("/"):
+            path[0] = "/"
+        try:
+            item = item.follow_path(path)
+        except Exception as x:
+            print(x)
+            return "break"
         if not item:
             return "break"
-    items = sorted(it for it in item.children.keys() if it.startswith(startswith))
+    try:
+        items = sorted(it for it in item.children.keys() if it.startswith(startswith))
+    except Exception as x:
+        print(x)
+        return "break"
     if len(items) == 0:
         return "break"
     autocomplete_i = (autocomplete_i + 1) % len(items)
     item = prefix + items[autocomplete_i]
+    if " " in item:
+        if not autocomplete.startswith('"'):
+            autocomplete = '"' + autocomplete
+        item = f'"{item}"'
     with lock:
-        start = autocomplete_start
-        end = start
-        while end < len(input_buffer) and input_buffer[end] != " ":
+        end = cpos
+        if cpos < len(input_buffer) and input_buffer[cpos] == '"':
             end += 1
-        input_buffer = input_buffer[:start] + item + input_buffer[end:]
-        autocomplete_moveto = start + len(item)
+        input_buffer = input_buffer[:autocomplete_start] + item + input_buffer[end:]
+        autocomplete_moveto = autocomplete_start + len(item)
+        if len(item) > 0 and item[-1] == '"':
+            autocomplete_moveto -= 1
         update_console_text()
     return "break"
 
@@ -326,7 +352,7 @@ def clear_console(new_text: str = ""):
 
 
 def run():
-    t = threading.Thread(target=cmd)
+    t = threading.Thread(target=run_cmd)
     t.daemon = True
     t.start()
     text.focus_set()
@@ -372,6 +398,15 @@ def command(name: str | None = None, *, alias: str | tuple[str] | None = None, d
     return decorator
 
 
+def run_cmd():
+    try:
+        cmd()
+    except BaseException as x:
+        print(x)
+        input()
+    window.destroy()
+
+
 def cmd():
     global history_i, history_enabled, autocomplete_enabled
     start_script = ""
@@ -381,6 +416,9 @@ def cmd():
         if not vfs.init(args[0]):
             err = True
             print(f'Cant open folder: "{args[0]}"')
+    elif not vfs.init(os.getcwd()):
+        err = True
+        print("Unexpected error")
     if len(args) >= 2:
         start_script = args[1]
     if not err and start_script:
@@ -399,7 +437,7 @@ def cmd():
         history_enabled = False
         autocomplete_enabled = False
         if err or line == "exit":
-            break
+            return
         if line == "":
             continue
         if line in history:
@@ -415,8 +453,6 @@ def cmd():
                     arg = ""
             elif ch == quote:
                 quote = None
-                args.append(arg)
-                arg = ""
             elif ch in ('"', "'"):
                 quote = ch
             else:
@@ -440,7 +476,6 @@ def cmd():
                 print("No help for this command")
             continue
         commands[cname](args)
-    window.destroy()
 
 
 def _load_start_script(path: str):
