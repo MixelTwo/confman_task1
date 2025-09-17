@@ -37,17 +37,17 @@ class Vfs:
         from console import print
         file = self.cwd.follow_path(fname)
         if not file:
-            print(f"file not found: {fname}")
+            print(f"cannot open '{fname}' for reading: No such file or directory")
             return None
         content, r = file.read_file()
         if r == 0:
             return content
         elif r == 1:
-            print(f"path is folder: {fname}")
+            print(f"error reading '{fname}': Is a directory")
         elif r == 2:
-            print(f"file not found: {fname}")
+            print(f"cannot open '{fname}' for reading: No such file or directory")
         else:
-            print(f"can't read file: {fname}")
+            print(f"cannot open '{fname}' for reading: {r}")
 
 
 class VfsItem:
@@ -155,7 +155,7 @@ class VfsItem:
         return r
 
     def read_file(self):
-        if self.is_dir:
+        if not self.is_file:
             return "", 1
         path = self.real_path()
         if not os.path.exists(path):
@@ -163,8 +163,8 @@ class VfsItem:
         try:
             with open(path, "r", encoding="utf8") as f:
                 return f.read(), 0
-        except Exception:
-            return "", 3
+        except Exception as x:
+            return "", x
 
     def get_mod_date(self):
         modt = os.path.getmtime(self.real_path())

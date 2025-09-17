@@ -1,10 +1,12 @@
 import os
 import platform
+import re
 import sys
 import threading
 import tkinter as tk
 import tkinter.font as tkFont
 from typing import Callable
+import unicodedata
 
 import pyperclip
 
@@ -126,7 +128,7 @@ def on_key_release(event):
             input_buffer += "\n"
             update_console_text()
     elif event.keysym in ("Up", "Down"):
-        pos = get_cursor_char_position() - len(console_text)
+        pos = get_cursor_input_char_position()
         if pos < 0:
             return
         if not history_enabled:
@@ -143,7 +145,7 @@ def on_key_release(event):
                 update_console_text()
         text.mark_set("insert", "end")
     elif event.state & 0x4 and event.keysym == "Left":
-        pos = get_cursor_char_position() - len(console_text)
+        pos = get_cursor_input_char_position()
         if pos < 0:
             if "\n" not in console_text[pos:]:
                 text.mark_set("insert", f"1.0+{len(console_text)} chars")
@@ -162,7 +164,7 @@ def on_key_release(event):
             text.mark_set("insert", f"1.0+{len(console_text) + ctrl_backspace_moveto} chars")
             ctrl_backspace_moveto = -1
     elif event.keysym == "Home":
-        pos = get_cursor_char_position() - len(console_text)
+        pos = get_cursor_input_char_position()
         if pos >= 0:
             text.mark_set("insert", f"1.0+{len(console_text)} chars")
 
@@ -177,12 +179,12 @@ def on_key_press(event):
     if event.keysym == "Return":
         return "break"
     if event.keysym in ("Up", "Down", "Home"):
-        pos = get_cursor_char_position() - len(console_text)
+        pos = get_cursor_input_char_position()
         if pos >= 0:
             return "break"
         return
     if event.keysym in ("Left", "BackSpace"):
-        pos = get_cursor_char_position() - len(console_text)
+        pos = get_cursor_input_char_position()
         if pos == 0:
             return "break"
         return
@@ -190,7 +192,7 @@ def on_key_press(event):
         return
     if event.keysym != "Tab":
         return
-    cpos = get_cursor_char_position() - len(console_text)
+    cpos = get_cursor_input_char_position()
     if cpos < 0:
         return "break"
     if autocomplete is None:
@@ -263,13 +265,19 @@ def get_cursor_char_position():
     return 0
 
 
+def get_cursor_input_char_position():
+    add = sum(1 for ch in console_text if unicodedata.east_asian_width(ch) == "W")
+    console_text_len = len(console_text) + add
+    return get_cursor_char_position() - console_text_len
+
+
 ctrl_backspace_moveto = -1
 ctrl_backspace_chars = (" ", "_", "/", "\\")
 
 
 def ctrl_backspace(event):
     global input_buffer, ctrl_backspace_moveto
-    pos = get_cursor_char_position() - len(console_text)
+    pos = get_cursor_input_char_position()
     if pos < 0:
         return "break"
     start = pos - 1
@@ -288,7 +296,7 @@ def ctrl_backspace(event):
 
 def ctrl_delete(event):
     global input_buffer, ctrl_backspace_moveto
-    pos = get_cursor_char_position() - len(console_text)
+    pos = get_cursor_input_char_position()
     if pos < 0:
         return "break"
     end = pos
@@ -395,6 +403,14 @@ def clear_console(new_text: str = ""):
         update_console_text()
 
 
+def to_new_line():
+    global console_text
+    with lock:
+        if not console_text.endswith("\n"):
+            console_text += "\n"
+        update_console_text()
+
+
 def pause():
     event_anykey.clear()
     event_anykey.wait()
@@ -483,6 +499,7 @@ def cmd():
         history_i = len(history)
         history_enabled = True
         autocomplete_enabled = True
+        to_new_line()
         print(vfs.getcwd(), end="", tags=Tags.green)
         line = input("> ", tags=Tags.blue).strip()
         history_enabled = False
