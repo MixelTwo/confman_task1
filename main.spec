@@ -1,11 +1,13 @@
 # -*- mode: python ; coding: utf-8 -*-
-
+import sys
+from os import path
+site_packages = next(p for p in sys.path if 'site-packages' in p)
 
 a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[("data", "data")],
+    datas=[("data", "data"), (path.join(site_packages, "dateparser", "data"), path.join("dateparser", "data"))],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

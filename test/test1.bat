@@ -22,3 +22,6 @@ cd ..
 
 ls -h
 cd /?
+
+pause
+exit

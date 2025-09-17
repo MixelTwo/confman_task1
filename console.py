@@ -8,7 +8,8 @@ from typing import Callable
 
 import pyperclip
 
-from vfs import Vfs, VMODE
+from args import Args
+from vfs import VMODE, Vfs
 
 stdinput = input
 stdprint = print
@@ -58,9 +59,13 @@ except Exception:
     pass
 
 event = threading.Event()
+event_anykey = threading.Event()
+event_anykey_toset = False
+event_anykey.set()
 lock = threading.Lock()
 
 console_text = ""
+console_tags: list[tuple[int, int, str]] = []
 input_buffer = ""
 
 
@@ -97,13 +102,25 @@ def on_text_change(e):
 
 def update_console_text():
     pos = text.index(tk.INSERT)
-    text.replace("1.0", tk.END, console_text + input_buffer)
+    nl = "\n" if input_buffer.endswith("\n") else ""
+    inp = input_buffer.split("\n")[0] + nl if not event.is_set() else ""
+    text.replace("1.0", tk.END, console_text + inp)
     text.see(tk.END)
     text.mark_set("insert", pos)
+    for (s, e, tag) in console_tags:
+        text.tag_add(tag, f"1.0+{s} chars", f"1.0+{e} chars")
 
 
 def on_key_release(event):
-    global history_i, input_buffer, autocomplete_moveto, ctrl_backspace_moveto
+    global history_i, input_buffer, autocomplete_moveto, ctrl_backspace_moveto, event_anykey_toset
+    if event.state & 0x4 and event.keysym == "w":
+        window.destroy()
+        return
+    if not event_anykey.is_set():
+        if event_anykey_toset:
+            event_anykey_toset = False
+            event_anykey.set()
+        return
     if event.keysym == "Return":
         with lock:
             input_buffer += "\n"
@@ -136,8 +153,6 @@ def on_key_release(event):
             input_buffer = ""
             update_console_text()
         text.mark_set("insert", "end")
-    elif event.state & 0x4 and event.keysym == "w":
-        window.destroy()
     elif event.keysym == "Tab":
         if autocomplete_moveto >= 0:
             text.mark_set("insert", f"1.0+{len(console_text) + autocomplete_moveto} chars")
@@ -153,7 +168,10 @@ def on_key_release(event):
 
 
 def on_key_press(event):
-    global autocomplete, autocomplete_start, autocomplete_i, input_buffer, autocomplete_moveto
+    global autocomplete, autocomplete_start, autocomplete_i, input_buffer, autocomplete_moveto, event_anykey_toset
+    if not event_anykey.is_set():
+        event_anykey_toset = True
+        return "break"
     if event.keysym != "Tab":
         autocomplete = None
     if event.keysym == "Return":
@@ -312,13 +330,25 @@ text.bind("<Control-Delete>", ctrl_delete)
 text.bind("<Button-3>", on_right_click)
 text.pack(expand=True, fill="both")
 
+text.tag_config("red", foreground="#ff0000")
+text.tag_config("green", foreground="#00ff00")
+text.tag_config("blue", foreground="#1d58ff")
 
-def input(prompt: str = "") -> str:
+
+class Tags:
+    red = "red"
+    green = "green"
+    blue = "blue"
+
+
+def input(prompt: str = "", tags: str | list[str] | None = None) -> str:
     global console_text, input_buffer
-    print(prompt, end="")
+    print(prompt, end="", tags=tags)
     if "\n" not in input_buffer:
         text.mark_set("insert", "end")
         event.clear()
+        with lock:
+            update_console_text()
         event.wait()
     with lock:
         i = input_buffer.index("\n")
@@ -333,11 +363,24 @@ def has_input():
     return "\n" in input_buffer
 
 
-def print(*values: object, sep: str = " ", end: str = "\n"):
+def print(*values: object, sep: str = " ", end: str = "\n", tags: str | list[str] | None = None):
     global console_text
     with lock:
+        l = len(console_text)
         console_text += sep.join(map(str, values)) + end
+        if tags:
+            tags = [tags] if isinstance(tags, str) else tags
+            for tag in tags:
+                console_tags.append((l, len(console_text), tag))
         update_console_text()
+
+
+def print_err(*values: object, sep: str = " ", end: str = "\n", tags: str | list[str] | None = None):
+    if not tags:
+        tags = []
+    tags = [tags] if isinstance(tags, str) else tags
+    tags.append(Tags.red)
+    print(*values, sep=sep, end=end, tags=tags)
 
 
 def console_size():
@@ -345,10 +388,16 @@ def console_size():
 
 
 def clear_console(new_text: str = ""):
-    global console_text
+    global console_text, console_tags
     with lock:
         console_text = new_text
+        console_tags = []
         update_console_text()
+
+
+def pause():
+    event_anykey.clear()
+    event_anykey.wait()
 
 
 def run():
@@ -360,10 +409,10 @@ def run():
     sys.exit()
 
 
-commands = {}
-commands_help = {}
-commands_aliases = {}
-history = []
+commands: dict[str, Callable[[Args], None]] = {}
+commands_help: dict[str, str | None] = {}
+commands_aliases: dict[str, list[str]] = {}
+history: list[str] = []
 history_i = 0
 history_enabled = False
 autocomplete: str | None = None
@@ -383,7 +432,7 @@ def command(name: str | None = None, *, alias: str | tuple[str] | None = None, d
         else:
             aliases = list(alias)
 
-    def decorator(fn: Callable[[list[str]], None]):
+    def decorator(fn: Callable[[Args], None]):
         aliases.append(name if name is not None else fn.__name__)
         help = doc if doc is not None else fn.__doc__
         if help:
@@ -401,8 +450,9 @@ def command(name: str | None = None, *, alias: str | tuple[str] | None = None, d
 def run_cmd():
     try:
         cmd()
-    except BaseException as x:
-        print(x)
+    except Exception as x:
+        print_err("Error")
+        print_err(x)
         input()
     window.destroy()
 
@@ -415,10 +465,10 @@ def cmd():
     if len(args) >= 1:
         if not vfs.init(args[0]):
             err = True
-            print(f'Cant open folder: "{args[0]}"')
+            print_err(f'Cant open folder: "{args[0]}"')
     elif not vfs.init(os.getcwd()):
         err = True
-        print("Unexpected error")
+        print_err("Unexpected error")
     if len(args) >= 2:
         start_script = args[1]
     if not err and start_script:
@@ -433,7 +483,8 @@ def cmd():
         history_i = len(history)
         history_enabled = True
         autocomplete_enabled = True
-        line = input(vfs.getcwd() + "> ").strip()
+        print(vfs.getcwd(), end="", tags=Tags.green)
+        line = input("> ", tags=Tags.blue).strip()
         history_enabled = False
         autocomplete_enabled = False
         if err or line == "exit":
@@ -443,31 +494,19 @@ def cmd():
         if line in history:
             history.remove(line)
         history.append(line)
-        args = []
-        arg = ""
-        quote = None
-        for ch in line:
-            if not quote and ch == " ":
-                if arg != "":
-                    args.append(arg)
-                    arg = ""
-            elif ch == quote:
-                quote = None
-            elif ch in ('"', "'"):
-                quote = ch
-            else:
-                arg += ch
-        args.append(arg)
-        if quote:
-            print("err: quote not closed")
+
+        try:
+            args = Args.parse(line)
+        except Exception as x:
+            print_err(x)
             continue
-        cname, *args = args
-        if cname not in commands:
-            print(f'Unknown command: "{cname}"')
+        if args.cmd not in commands:
+            print(f'Unknown command: "{args.cmd}"')
             continue
-        if len(args) == 1 and args[0] in ("/?", "/h", "-h", "--help"):
-            help = commands_help.get(cname, None)
-            aliases = commands_aliases.get(cname, [cname])
+
+        if args.has("/?", "/h", "-h", "--help"):
+            help = commands_help.get(args.cmd, None)
+            aliases = commands_aliases.get(args.cmd, [args.cmd])
             if help:
                 if len(aliases) > 1:
                     help = "Aliases: " + ", ".join(aliases) + "\n" + help
@@ -475,7 +514,11 @@ def cmd():
             else:
                 print("No help for this command")
             continue
-        commands[cname](args)
+
+        try:
+            commands[args.cmd](args)
+        except Exception as x:
+            print_err(x)
 
 
 def _load_start_script(path: str):
@@ -484,6 +527,7 @@ def _load_start_script(path: str):
         with open(path, "r", encoding="utf8") as f:
             with lock:
                 input_buffer = f.read() + "\n"
+                event.set()
                 update_console_text()
     except Exception:
         print(f'Cant open script file: "{path}"')

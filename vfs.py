@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 
 VMODE = True
 
@@ -31,6 +32,22 @@ class Vfs:
 
     def getcwd(self):
         return self.cwd.path()
+
+    def read_file(self, fname: str):
+        from console import print
+        file = self.cwd.follow_path(fname)
+        if not file:
+            print(f"file not found: {fname}")
+            return None
+        content, r = file.read_file()
+        if r == 0:
+            return content
+        elif r == 1:
+            print(f"path is folder: {fname}")
+        elif r == 2:
+            print(f"file not found: {fname}")
+        else:
+            print(f"can't read file: {fname}")
 
 
 class VfsItem:
@@ -136,3 +153,19 @@ class VfsItem:
         if VMODE:
             r = r.replace("\\", "/")
         return r
+
+    def read_file(self):
+        if self.is_dir:
+            return "", 1
+        path = self.real_path()
+        if not os.path.exists(path):
+            return "", 2
+        try:
+            with open(path, "r", encoding="utf8") as f:
+                return f.read(), 0
+        except Exception:
+            return "", 3
+
+    def get_mod_date(self):
+        modt = os.path.getmtime(self.real_path())
+        return datetime.fromtimestamp(modt)

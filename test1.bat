@@ -1,1 +1,0 @@
-dist\emulator.exe . start_script

@@ -2,11 +2,11 @@ from time import sleep
 
 import comands as _
 import donut
-from console import clear_console, command, console_size, has_input, input, print, run
+from console import Args, clear_console, command, console_size, has_input, input, print, run
 
 
 @command("donut")
-def cmd_donut(args: list[str]):
+def cmd_donut(args: Args):
     A = 1
     B = 1
     f = True

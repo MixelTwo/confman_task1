@@ -19,8 +19,8 @@
                 // "program": "${file}",
                 "program": "main.py",
                 "console": "integratedTerminal",
-                "args": ["C:/tmp"]
-                // "args": ["C:\\tmp", "start_script"]
+                // "args": ["C:/tmp/test"]
+                "args": ["C:\\tmp\\test", "test\\test2.bat"]
             }
         ]
     }
