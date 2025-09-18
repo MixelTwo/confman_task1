@@ -487,9 +487,9 @@ def cmd():
         if not vfs.init(args[0]):
             err = True
             print_err(f'Cant open folder: "{args[0]}"')
-    elif not vfs.init(os.getcwd()):
-        err = True
-        print_err("Unexpected error")
+    # elif not vfs.init(os.getcwd()):
+    #     err = True
+    #     print_err("Unexpected error")
     if len(args) >= 2:
         start_script = args[1]
     if not err and start_script:
