@@ -20,7 +20,7 @@
                 "program": "main.py",
                 "console": "integratedTerminal",
                 "args": ["C:/tmp/test"]
-                // "args": ["C:\\tmp\\test", "test\\test2.bat"]
+                // "args": ["C:\\tmp\\test", "test\\test3.bat"]
             }
         ]
     }

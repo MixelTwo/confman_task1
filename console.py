@@ -69,6 +69,7 @@ lock = threading.Lock()
 console_text = ""
 console_tags: list[tuple[int, int, str]] = []
 input_buffer = ""
+input_file = ""
 
 
 def on_text_change(e):
@@ -478,7 +479,7 @@ def run_cmd():
 
 
 def cmd():
-    global history_i, history_enabled, autocomplete_enabled
+    global history_i, history_enabled, autocomplete_enabled, input_file, input_buffer
     start_script = ""
     args = sys.argv[1:]
     err = False
@@ -505,7 +506,14 @@ def cmd():
         autocomplete_enabled = True
         to_new_line()
         print(vfs.getcwd(), end="", tags=Tags.green)
+        f = False
+        if input_buffer == "":
+            f = True
+            input_buffer = input_file
         line = input("> ", tags=Tags.blue).strip()
+        if f:
+            input_file = input_buffer
+            input_buffer = ""
         history_enabled = False
         autocomplete_enabled = False
         if err or line == "exit":
@@ -543,13 +551,12 @@ def cmd():
 
 
 def _load_start_script(path: str):
-    global input_buffer
+    global input_file
     try:
         with open(path, "r", encoding="utf8") as f:
             with lock:
-                input_buffer = f.read() + "\n"
+                input_file = f.read() + "\n"
                 event.set()
-                update_console_text()
     except Exception:
         print(f'Cant open script file: "{path}"')
         return False

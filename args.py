@@ -1,8 +1,9 @@
 import argparse
 import shlex
+from typing import Iterable
 
 
-class Args:
+class Args(Iterable[str]):
     cmd: str
     raw: list[str]
     parser: argparse.ArgumentParser
@@ -25,6 +26,10 @@ class Args:
 
     def __len__(self):
         return len(self.raw)
+
+    def __iter__(self):
+        for arg in self.raw:
+            yield arg
 
     def has(self, *items: str):
         return any(v in items for v in self.raw)

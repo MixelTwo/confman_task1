@@ -1,6 +1,6 @@
 @echo off
 SETLOCAL
-SET test_count=2
+SET test_count=3
 
 IF "%1"=="" (
     echo Error: No index provided.

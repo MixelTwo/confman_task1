@@ -1,9 +1,8 @@
-import time
 from datetime import datetime, timezone
 
 import dateparser
 
-from console import Args, Tags, clear_console, command, console_size, get_console_history, has_input, input, pause, print, print_err, run, vfs
+from console import Args, Tags, clear_console, command, console_size, get_console_history, has_input, input, pause, print, print_err, vfs
 
 
 @command(alias="dir")
@@ -66,17 +65,25 @@ def cat(args: Args):
         print("specify file")
         return
     for fname in args:
+        file = vfs.find(fname)
+        if not file:
+            print(f"cannot open '{fname}' for reading: No such file or directory")
+            continue
         try:
-            file = vfs.find(fname)
             print(file.read())
         except Exception as x:
-            print(x)
+            print(f"cannot open '{fname}' for reading: {x}")
 
 
 @command("pause")
 def cmd_pause(args: Args):
     print("Press any key to continue . . .")
     pause()
+
+
+@command()
+def echo(args: Args):
+    print(" ".join(args))
 
 
 @command()
@@ -172,67 +179,67 @@ def date(args: Args):
     Display date and time in the given FORMAT.
 
     Mandatory arguments to long options are mandatory for short options too.
-    -d, --date=STRING          display time described by STRING, not 'now'
-    -f, --file=DATEFILE        like --date; once for each line of DATEFILE
-    -I[FMT], --iso-8601[=FMT]  output date/time in ISO 8601 format.
-                                FMT='date' for date only (the default),
-                                'hours', 'minutes', 'seconds', or 'ns'
-                                for date and time to the indicated precision.
-                                Example: 2006-08-14T02:34:56-06:00
-    -R, --rfc-email            output date and time in RFC 5322 format.
-                                Example: Mon, 14 Aug 2006 02:34:56 -0600
-        --rfc-3339=FMT         output date/time in RFC 3339 format.
-                                FMT='date', 'seconds', or 'ns'
-                                for date and time to the indicated precision.
-                                Example: 2006-08-14 02:34:56-06:00
-    -r, --reference=FILE       display the last modification time of FILE
-    -u, --utc, --universal     print Coordinated Universal Time (UTC)
-    -h, --help        display this help and exit
+      -d, --date=STRING          display time described by STRING, not 'now'
+      -f, --file=DATEFILE        like --date; once for each line of DATEFILE
+      -I[FMT], --iso-8601[=FMT]  output date/time in ISO 8601 format.
+                                  FMT='date' for date only (the default),
+                                  'hours', 'minutes', 'seconds', or 'ns'
+                                  for date and time to the indicated precision.
+                                  Example: 2006-08-14T02:34:56-06:00
+      -R, --rfc-email            output date and time in RFC 5322 format.
+                                  Example: Mon, 14 Aug 2006 02:34:56 -0600
+          --rfc-3339=FMT         output date/time in RFC 3339 format.
+                                  FMT='date', 'seconds', or 'ns'
+                                  for date and time to the indicated precision.
+                                  Example: 2006-08-14 02:34:56-06:00
+      -r, --reference=FILE       display the last modification time of FILE
+      -u, --utc, --universal     print Coordinated Universal Time (UTC)
+      -h, --help        display this help and exit
 
     All options that specify the date to display are mutually exclusive.
     I.e.: --date, --file, --reference.
 
     FORMAT controls the output.  Interpreted sequences are:
 
-    %%   a literal %
-    %a   locale's abbreviated weekday name (e.g., Sun)
-    %A   locale's full weekday name (e.g., Sunday)
-    %b   locale's abbreviated month name (e.g., Jan)
-    %B   locale's full month name (e.g., January)
-    %c   locale's date and time (e.g., Thu Mar  3 23:05:25 2005)
-    %d   day of month (e.g., 01)
-    %D   date; same as %m/%d/%y
-    %h   same as %b
-    %H   hour (00..23)
-    %I   hour (01..12)
-    %j   day of year (001..366)
-    %m   month (01..12)
-    %M   minute (00..59)
-    %n   a newline
-    %f   microsecond (000000..999999)
-    %N   microsecond (000000..999999)
-    %p   locale's equivalent of either AM or PM; blank if not known
-    %R   24-hour hour and minute; same as %H:%M
-    %s   seconds since the Epoch (1970-01-01 00:00 UTC)
-    %S   second (00..60)
-    %t   a tab
-    %T   time; same as %H:%M:%S
-    %U   week number of year, with Sunday as first day of week (00..53)
-    %w   day of week (0..6); 0 is Sunday
-    %W   week number of year, with Monday as first day of week (00..53)
-    %x   locale's date representation (e.g., 12/31/99)
-    %X   locale's time representation (e.g., 23:13:48)
-    %y   last two digits of year (00..99)
-    %Y   year
-    %z   +hhmm numeric time zone (e.g., -0400)
-    %Z   alphabetic time zone abbreviation (e.g., EDT)
+      %%   a literal %
+      %a   locale's abbreviated weekday name (e.g., Sun)
+      %A   locale's full weekday name (e.g., Sunday)
+      %b   locale's abbreviated month name (e.g., Jan)
+      %B   locale's full month name (e.g., January)
+      %c   locale's date and time (e.g., Thu Mar  3 23:05:25 2005)
+      %d   day of month (e.g., 01)
+      %D   date; same as %m/%d/%y
+      %h   same as %b
+      %H   hour (00..23)
+      %I   hour (01..12)
+      %j   day of year (001..366)
+      %m   month (01..12)
+      %M   minute (00..59)
+      %n   a newline
+      %f   microsecond (000000..999999)
+      %N   microsecond (000000..999999)
+      %p   locale's equivalent of either AM or PM; blank if not known
+      %R   24-hour hour and minute; same as %H:%M
+      %s   seconds since the Epoch (1970-01-01 00:00 UTC)
+      %S   second (00..60)
+      %t   a tab
+      %T   time; same as %H:%M:%S
+      %U   week number of year, with Sunday as first day of week (00..53)
+      %w   day of week (0..6); 0 is Sunday
+      %W   week number of year, with Monday as first day of week (00..53)
+      %x   locale's date representation (e.g., 12/31/99)
+      %X   locale's time representation (e.g., 23:13:48)
+      %y   last two digits of year (00..99)
+      %Y   year
+      %z   +hhmm numeric time zone (e.g., -0400)
+      %Z   alphabetic time zone abbreviation (e.g., EDT)
 
     Examples:
     Convert seconds since the Epoch (1970-01-01 UTC) to a date
-    $ date --date='2147483647'
+      > date --date='2147483647'
 
     Show relative date
-    $ date --date='in 2 days'
+      > date --date='in 2 days'
     """
     args.add_argument("FORMAT", default="%c", nargs="?")
     g1 = args.add_mutually_exclusive_group()
@@ -290,7 +297,7 @@ def date(args: Args):
         return date.strftime(fmt)
 
     if argv.file:
-        content = vfs.find(argv.file).read()
+        content = vfs.get(argv.file).read()
         if not content:
             return
         for line in content.strip().split("\n"):
@@ -314,14 +321,14 @@ def head(args: Args):
     With more than one FILE, precede each with a header giving the file name.
 
     Mandatory arguments to long options are mandatory for short options too.
-    -c, --bytes=[-]NUM       print the first NUM bytes of each file;
-                                with the leading '-', print all but the last
-                                NUM bytes of each file
-    -n, --lines=[-]NUM       print the first NUM lines instead of the first 10;
-                                with the leading '-', print all but the last
-                                NUM lines of each file
-    -q, --quiet, --silent    never print headers giving file names
-    -v, --verbose            always print headers giving file names
+      -c, --bytes=[-]NUM       print the first NUM bytes of each file;
+                                  with the leading '-', print all but the last
+                                  NUM bytes of each file
+      -n, --lines=[-]NUM       print the first NUM lines instead of the first 10;
+                                  with the leading '-', print all but the last
+                                  NUM lines of each file
+      -q, --quiet, --silent    never print headers giving file names
+      -v, --verbose            always print headers giving file names
 
     NUM may have a multiplier suffix:
     b 512, kB 1000, K 1024, MB 1000*1000, M 1024*1024,
@@ -398,3 +405,85 @@ def head(args: Args):
                 print(str(f[:count])[2:-1])
         except Exception as x:
             print(f"cannot open '{fname}' for reading: {x}")
+
+
+@command()
+def cp(args: Args):
+    """
+    Usage: cp [OPTION]... [-T] SOURCE DEST
+      or:  cp [OPTION]... SOURCE... DIRECTORY
+      or:  cp [OPTION]... -t DIRECTORY SOURCE...
+    Copy SOURCE to DEST, or multiple SOURCE(s) to DIRECTORY.
+
+    Mandatory arguments to long options are mandatory for short options too.
+      -i, --interactive            prompt before overwrite
+      -n, --no-clobber             do not overwrite an existing file and do not fail.
+      -R, -r, --recursive          copy directories recursively
+      -t, --target-directory=DIRECTORY  copy all SOURCE arguments into DIRECTORY
+      -T, --no-target-directory    treat DEST as a normal file
+      -v, --verbose                explain what is being done
+          --help        display this help and exit
+    """
+    args.add_argument("sources", nargs="+")
+    g = args.add_mutually_exclusive_group()
+    g.add_argument("-i", "--interactive", action="store_true")
+    g.add_argument("-n", "--no-clobber", action="store_true")
+    args.add_argument("-r", "-R", "--recursive", action="store_true")
+    args.add_argument("-t", "--target-directory")
+    args.add_argument("-T", "--no-target-directory", action="store_true")
+    args.add_argument("-v", "--verbose", action="store_true")
+
+    argv = args.parse_args()
+
+    dest = None
+    if argv.target_directory:
+        dest = argv.target_directory
+    elif len(argv.sources) > 1:
+        *argv.sources, dest = argv.sources
+
+    if not dest:
+        print("cp: missing destination file operand")
+        return
+
+    dest_item = vfs.find(dest)
+
+    def do_copy(src: str, dest_path: str):
+        src = src.replace("\\", "/")
+        dest_path = dest_path.replace("\\", "/").rstrip("/")
+        src_item = vfs.find(src.rstrip("/"))
+        if not src_item:
+            print(f"cp: cannot copy '{src}': No such file or directory")
+            return
+
+        trailing_slash = src.endswith("/") and src_item.is_dir
+
+        if dest_item and dest_item.is_dir and not argv.no_target_directory:
+            if src_item.is_file or not trailing_slash:
+                src_item.copy_to(dest_item, recursive=argv.recursive, overwrite=not argv.no_clobber,
+                                 interactive=argv.interactive, verbose=argv.verbose)
+            else:
+                for child in src_item.listdir():
+                    child.copy_to(dest_item, recursive=argv.recursive, overwrite=not argv.no_clobber,
+                                  interactive=argv.interactive, verbose=argv.verbose)
+        else:
+            *dest_parent_path, new_name = dest_path.split("/")
+            dest_parent_path = "/".join(dest_parent_path) or "."
+            dest_parent = vfs.find(dest_parent_path)
+            if not dest_parent or dest_parent.is_file:
+                print(f"cp: target '{dest_path}' is not a valid directory")
+                return
+
+            if src_item.is_dir and not argv.recursive:
+                print(f"cp: -r not specified; omitting directory '{src}'")
+                return
+            src_item.copy_to(dest_parent, overwrite_name=new_name, recursive=argv.recursive,
+                             overwrite=not argv.no_clobber, interactive=argv.interactive, verbose=argv.verbose)
+
+    if len(argv.sources) > 1:
+        if not dest_item or dest_item.is_file or argv.no_target_directory:
+            print(f"cp: target '{dest}' is not a directory")
+            return
+        for src in argv.sources:
+            do_copy(src, dest)
+    else:
+        do_copy(argv.sources[0], dest)
