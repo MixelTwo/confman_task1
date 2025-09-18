@@ -92,6 +92,29 @@ def clear(args: Args):
 
 
 @command()
+def stat(args: Args):
+    """
+    Usage: stat FILE...
+    Display file or file system status.
+    """
+    if len(args) == 0:
+        print("specify file")
+        return
+    for fname in args:
+        file = vfs.find(fname)
+        if not file:
+            print(f"cannot open '{fname}' for reading: No such file or directory")
+            continue
+        try:
+            fmt = "%Y-%m-%d %H:%M:%S.%f %z"
+            print(f"  File: {file.name}")
+            print(f"Access: {file.get_acc_date().strftime(fmt)}")
+            print(f"Modify: {file.get_mod_date().strftime(fmt)}")
+        except Exception as x:
+            print(f"cannot open '{fname}' for reading: {x}")
+
+
+@command()
 def history(args: Args):
     """
     history: history [-c] [-d offset] [n]
@@ -452,7 +475,7 @@ def cp(args: Args):
         dest_path = dest_path.replace("\\", "/").rstrip("/")
         src_item = vfs.find(src.rstrip("/"))
         if not src_item:
-            print(f"cp: cannot copy '{src}': No such file or directory")
+            print(f"cp: cannot stat '{src}': No such file or directory")
             return
 
         trailing_slash = src.endswith("/") and src_item.is_dir
@@ -487,3 +510,94 @@ def cp(args: Args):
             do_copy(src, dest)
     else:
         do_copy(argv.sources[0], dest)
+
+
+@command()
+def touch(args: Args):
+    """
+    Usage: touch [OPTION]... FILE...
+    Update the access and modification times of each FILE to the current time.
+
+    A FILE argument that does not exist is created empty, unless -c or -h
+    is supplied.
+
+    Mandatory arguments to long options are mandatory for short options too.
+      -a                     change only the access time
+      -c, --no-create        do not create any files
+      -d, --date=STRING      parse STRING and use it instead of current time
+      -m                     change only the modification time
+      -r, --reference=FILE   use this file's times instead of current time
+      -t STAMP               use [[CC]YY]MMDDhhmm[.ss] instead of current time
+          --time=WORD        change the specified time:
+                               WORD is access, atime, or use: equivalent to -a
+                               WORD is modify or mtime: equivalent to -m
+          --help        display this help and exit
+
+    Note that the -d and -t options accept different time-date formats.
+    """
+    args.add_argument("files", nargs="+")
+    g1 = args.add_mutually_exclusive_group()
+    g1.add_argument("-a", action="store_true")
+    g1.add_argument("-m", action="store_true")
+    g1.add_argument("--time", choices=["access", "atime", "use", "modify", "mtime"])
+    g2 = args.add_mutually_exclusive_group()
+    g2.add_argument("-d", "--date", default=None)
+    g2.add_argument("-r", "--reference", default=None)
+    g2.add_argument("-t", default=None)
+    args.add_argument("-c", "--no-create", action="store_true")
+
+    argv = args.parse_args()
+
+    now = datetime.now()
+
+    if argv.reference:
+        ref_item = vfs.find(argv.reference)
+        if not ref_item:
+            print(f"touch: cannot stat '{argv.reference}': No such file or directory")
+            return
+        now = ref_item.get_mod_date()
+
+    elif argv.date:
+        now = dateparser.parse(argv.date)
+        if not now:
+            print(f"touch: invalid date string '{argv.date}'")
+            return
+
+    elif argv.t:
+        # [[CC]YY]MMDDhhmm[.ss]
+        try:
+            tstr = argv.t
+            if "." in tstr:
+                tmain, tsec = tstr.split(".")
+            else:
+                tmain, tsec = tstr, "00"
+            tlen = len(tmain)
+            if tlen == 12:  # CCYYMMDDhhmm
+                dt = datetime.strptime(tmain, "%Y%m%d%H%M")
+            elif tlen == 10:  # YYMMDDhhmm
+                dt = datetime.strptime(tmain, "%y%m%d%H%M")
+            else:
+                raise ValueError
+            dt = dt.replace(second=int(tsec))
+            now = dt
+        except ValueError:
+            print(f"touch: invalid time stamp '{argv.t}'")
+            return
+
+    if argv.time:
+        update_acc = argv.time in ("access", "atime", "use")
+        update_mod = argv.time in ("modify", "mtime")
+    else:
+        update_acc = argv.a or not argv.m
+        update_mod = argv.m or not argv.a
+
+    for fpath in argv.files:
+        item = vfs.find(fpath)
+        if not item:
+            if argv.no_create:
+                continue
+            item = vfs.create_file(fpath)
+        if update_mod:
+            item.set_mod_date(now)
+        if update_acc:
+            item.set_acc_date(now)

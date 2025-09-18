@@ -205,9 +205,11 @@ class VfsItem:
             raise Exception("No such file or directory")
         with open(path, "rb") as f:
             self.__file_content__ = f.read()
+            self.__file_acc_date__ = datetime.now()
             return self.__file_content__
 
     __file_mod_date__: datetime | None = None
+    __file_acc_date__: datetime | None = None
 
     def write(self, data: str, append: bool = False):
         self.write_bytes(data.encode("utf8"), append)
@@ -218,6 +220,7 @@ class VfsItem:
         else:
             self.__file_content__ = data
         self.__file_mod_date__ = datetime.now()
+        self.__file_acc_date__ = datetime.now()
 
     def get_mod_date(self):
         if self.__file_mod_date__:
@@ -225,11 +228,24 @@ class VfsItem:
         modt = os.path.getmtime(self.__real_path__())
         return datetime.fromtimestamp(modt)
 
+    def set_mod_date(self, date: datetime):
+        self.__file_mod_date__ = date
+
+    def get_acc_date(self):
+        if self.__file_acc_date__:
+            return self.__file_acc_date__
+        access_timestamp = os.path.getatime(self.__real_path__())
+        return datetime.fromtimestamp(access_timestamp)
+
+    def set_acc_date(self, date: datetime):
+        self.__file_acc_date__ = date
+
     def add_file(self, fname: str):
         if "/" in fname or "\\" in fname:
             raise Exception("filename cant contain slashes")
         item = VfsItem(self.vfs, fname, self, is_file=True)
         item.__file_mod_date__ = datetime.now()
+        self.__file_acc_date__ = datetime.now()
         self.children[fname] = item
         return item
 
@@ -238,6 +254,7 @@ class VfsItem:
             raise Exception("dirname cant contain slashes")
         item = VfsItem(self.vfs, dname, self, is_file=False)
         item.__file_mod_date__ = datetime.now()
+        self.__file_acc_date__ = datetime.now()
         self.children[dname] = item
         return item
 
