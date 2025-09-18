@@ -33,21 +33,23 @@ class Vfs:
     def getcwd(self):
         return self.cwd.path()
 
-    def read_file(self, fname: str):
-        from console import print
+    def find(self, fname: str):
         file = self.cwd.follow_path(fname)
         if not file:
-            print(f"cannot open '{fname}' for reading: No such file or directory")
-            return None
-        content, r = file.read_file()
-        if r == 0:
-            return content
-        elif r == 1:
-            print(f"error reading '{fname}': Is a directory")
-        elif r == 2:
-            print(f"cannot open '{fname}' for reading: No such file or directory")
-        else:
-            print(f"cannot open '{fname}' for reading: {r}")
+            raise Exception(f"cannot open '{fname}' for reading: No such file or directory")
+        return file
+
+    def create_file(self, fname: str):
+        file = self.cwd.follow_path(fname)
+        if file:
+            return file
+        last = [""]
+        d = self.cwd.follow_path(fname, last=last)
+        if not d:
+            raise Exception(f"cannot create '{fname}': No such directory")
+        item = VfsItem(self, last[0], d, is_file=True)
+        d.children[last[0]] = item
+        return item
 
 
 class VfsItem:
@@ -75,7 +77,7 @@ class VfsItem:
         self.__children__ = {}
         if self.is_file:
             return self.__children__
-        path = self.real_path()
+        path = self.__real_path__()
         if os.path.exists(path):
             for name in os.listdir(path):
                 is_file = os.path.isfile(os.path.join(path, name))
@@ -83,7 +85,7 @@ class VfsItem:
                 self.__children__[name] = item
         return self.__children__
 
-    def follow_path(self, path: str | list[str]) -> "VfsItem | None":
+    def follow_path(self, path: str | list[str], last: list[str] = []) -> "VfsItem | None":
         if isinstance(path, str):
             path = path.replace("\\", "/").strip()
             parts = [p.strip() for p in path.split("/")]
@@ -93,6 +95,9 @@ class VfsItem:
                 parts[0] = "/"
         else:
             parts = path
+        if len(last) == 1:
+            last[0] = parts[-1]
+            parts = parts[:-1]
         if len(parts) > 0 and (":" in parts[0] or parts[0] == "/"):
             disc, *parts = parts  # add new disc if exist
             if disc == "/":
@@ -127,7 +132,7 @@ class VfsItem:
             return None
         return self.children[p].__follow_path__(rest)
 
-    def real_path(self):
+    def __real_path__(self):
         if not self.parent:
             return self.name + os.path.sep
         cur = self
@@ -154,18 +159,40 @@ class VfsItem:
             r = r.replace("\\", "/")
         return r
 
-    def read_file(self):
+    __file_content__: bytes | None = None
+
+    def read(self):
+        return self.read_bytes().decode("utf8")
+
+    def read_lines(self):
+        return self.read().split("\n")
+
+    def read_bytes(self):
+        if self.__file_content__ is not None:
+            return self.__file_content__
         if not self.is_file:
-            return "", 1
-        path = self.real_path()
+            raise Exception("Is a directory")
+        path = self.__real_path__()
         if not os.path.exists(path):
-            return "", 2
-        try:
-            with open(path, "r", encoding="utf8") as f:
-                return f.read(), 0
-        except Exception as x:
-            return "", x
+            raise Exception("No such file or directory")
+        with open(path, "rb") as f:
+            self.__file_content__ = f.read()
+            return self.__file_content__
+
+    __file_mod_date__: datetime | None = None
+
+    def write(self, data: str, append: bool = False):
+        self.write_bytes(data.encode("utf8"), append)
+
+    def write_bytes(self, data: bytes, append: bool = False):
+        if append and self.__file_content__:
+            self.__file_content__ += data
+        else:
+            self.__file_content__ = data
+        self.__file_mod_date__ = datetime.now()
 
     def get_mod_date(self):
-        modt = os.path.getmtime(self.real_path())
+        if self.__file_mod_date__:
+            return self.__file_mod_date__
+        modt = os.path.getmtime(self.__real_path__())
         return datetime.fromtimestamp(modt)

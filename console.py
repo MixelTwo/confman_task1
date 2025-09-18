@@ -411,6 +411,10 @@ def to_new_line():
         update_console_text()
 
 
+def get_console_history():
+    return history
+
+
 def pause():
     event_anykey.clear()
     event_anykey.wait()

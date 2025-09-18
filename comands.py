@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 import dateparser
 
-from console import Args, Tags, clear_console, command, console_size, has_input, input, pause, print, print_err, run, vfs
+from console import Args, Tags, clear_console, command, console_size, get_console_history, has_input, input, pause, print, print_err, run, vfs
 
 
 @command(alias="dir")
@@ -66,9 +66,11 @@ def cat(args: Args):
         print("specify file")
         return
     for fname in args:
-        file = vfs.read_file(fname)
-        if file:
-            print(file)
+        try:
+            file = vfs.find(fname)
+            print(file.read())
+        except Exception as x:
+            print(x)
 
 
 @command("pause")
@@ -80,6 +82,87 @@ def cmd_pause(args: Args):
 @command()
 def clear(args: Args):
     clear_console()
+
+
+@command()
+def history(args: Args):
+    """
+    history: history [-c] [-d offset] [n]
+          or history -anrw [filename]
+          or history -s arg [arg...]
+    Display or manipulate the history list.
+
+    Display the history list with line numbers.
+    An argument of N lists only the last N entries.
+
+    Options:
+      -c        clear the history list by deleting all of the entries
+      -d offset delete the history entry at position OFFSET. Negative
+                offsets count back from the end of the history list
+
+      -a        append history lines from this session to the history file
+      -n        read all history lines not already read from the history file
+                and append them to the history list
+      -r        read the history file and append the contents to the history
+                list
+      -w        write the current history to the history file
+
+      -s        append the ARGs to the history list as a single entry
+    """
+    args.add_argument("N", nargs="?", default=-1, type=int)
+    g = args.add_mutually_exclusive_group()
+    g.add_argument("-c", action="store_true", required=False)
+    g.add_argument("-d", required=False, type=int)
+    g.add_argument("-a", required=False)
+    g.add_argument("-n", required=False)
+    g.add_argument("-r", required=False)
+    g.add_argument("-w", required=False)
+    g.add_argument("-s", nargs="+", required=False)
+    argv = args.parse_args()
+    history = get_console_history()
+    if argv.c:
+        history.clear()
+        return
+    if argv.d is not None:
+        history.pop(argv.d)
+        return
+    if argv.s:
+        for v in argv.s:
+            history.append(v)
+        return
+    fname = argv.a or argv.n or argv.r
+    if fname:
+        item = vfs.cwd.follow_path(fname)
+        if not item:
+            print(f"{fname}: No such file or directory")
+            return
+        if not item.is_file:
+            print(f"{fname}: Not a file")
+            return
+    if argv.a:
+        for line in history:
+            item.write(line + "\n", append=True)
+        return
+    if argv.n:
+        for line in item.read_lines():
+            if line not in history:
+                history.append(line)
+        return
+    if argv.r:
+        for line in item.read_lines():
+            history.append(line)
+        return
+    if argv.w:
+        item = vfs.create_file(argv.w)
+        item.write("\n".join(history))
+        return
+
+    c = len(history) if argv.N < 0 else argv.N
+    ml = len(str(len(history))) + 1
+    for i, v in enumerate(history):
+        if i >= len(history) - c:
+            print(f"%{ml}d  " % i, end="", tags=Tags.blue)
+            print(v)
 
 
 @command()
@@ -207,10 +290,10 @@ def date(args: Args):
         return date.strftime(fmt)
 
     if argv.file:
-        file = vfs.read_file(argv.file)
-        if not file:
+        content = vfs.find(argv.file).read()
+        if not content:
             return
-        for line in file.strip().split("\n"):
+        for line in content.strip().split("\n"):
             print(conver_date(line.strip()))
     elif argv.reference:
         file = vfs.cwd.follow_path(argv.reference)
@@ -290,9 +373,10 @@ def head(args: Args):
         Count = parse_count(argv.bytes, f"invalid number of bytes: {argv.bytes}")
     files: list[str] = argv.FILE
     for i, fname in enumerate(files):
+        if i > 0:
+            print()
         if (len(files) > 1 or argv.verbose) and not argv.quiet:
             if i > 0:
-                print()
                 print()
             print("==> ", end="", tags=Tags.blue)
             print(fname, end="", tags=Tags.green)
@@ -307,24 +391,10 @@ def head(args: Args):
         try:
             count = Count
             if not argv.bytes:
-                with open(item.real_path(), "r", encoding="utf8") as f:
-                    if count >= 0:
-                        while count > 0:
-                            line = f.readline()
-                            if not line:
-                                break
-                            print(line, end="")
-                            count -= 1
-                    else:
-                        for line in f.readlines()[:count]:
-                            print(line, end="")
+                for line in item.read_lines()[:count]:
+                    print(line)
             else:
-                with open(item.real_path(), "br") as f:
-                    if count < 0:
-                        f.seek(0, 2)
-                        file_size = f.tell()
-                        f.seek(0)
-                        count = file_size + count
-                    print(str(f.read(count))[2:-1])
+                f = item.read_bytes()
+                print(str(f[:count])[2:-1])
         except Exception as x:
             print(f"cannot open '{fname}' for reading: {x}")
