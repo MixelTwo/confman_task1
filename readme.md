@@ -57,6 +57,7 @@
 ## Тесты
 
 ```
-test1.bat
-test2.bat
+test\test_runner.bat 1
+test\test_runner.bat 2
+test\test_runner.bat 3
 ```
