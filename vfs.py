@@ -244,8 +244,9 @@ class VfsItem:
         if "/" in fname or "\\" in fname:
             raise Exception("filename cant contain slashes")
         item = VfsItem(self.vfs, fname, self, is_file=True)
+        item.__file_content__ = bytes()
         item.__file_mod_date__ = datetime.now()
-        self.__file_acc_date__ = datetime.now()
+        item.__file_acc_date__ = datetime.now()
         self.children[fname] = item
         return item
 
@@ -254,7 +255,7 @@ class VfsItem:
             raise Exception("dirname cant contain slashes")
         item = VfsItem(self.vfs, dname, self, is_file=False)
         item.__file_mod_date__ = datetime.now()
-        self.__file_acc_date__ = datetime.now()
+        item.__file_acc_date__ = datetime.now()
         self.children[dname] = item
         return item
 
